@@ -7,6 +7,9 @@ const { sortTLMN, checkTLMNBeat } = require('./lib/TLMNRules');
 const { compareChi, checkBinhLung, resolveBinhMatch } = require('./lib/BinhRules');
 const { sortSam, checkSamBeat } = require('./lib/SamRules');
 const { calcXiDach } = require('./lib/XiDachRules');
+const crypto = require('crypto');
+const accountService = require('./lib/accounts');
+const accountSessions = new Map();
 
 const app = express();
 const server = http.createServer(app);
@@ -15,7 +18,48 @@ const io = new Server(server);
 app.use(express.static('public'));
 app.use(express.json());
 
-const USERS = {}; 
+const fs = require('fs');
+const path = require('path');
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+function sessionUser(sessionId) {
+  const uid = accountSessions.get(String(sessionId || ''));
+  return uid ? accountService.getUser(uid) : null;
+}
+function publicGameUser(u) {
+  if (!u) return null;
+  return { ...u, balance: Number(u.coins || 0) };
+}
+
+app.post('/api/register', async (req, res) => {
+  try {
+    const u = await accountService.register(req.body?.username, req.body?.password, req.body?.nickname, req.body?.avatar);
+    const sid = crypto.randomUUID();
+    accountSessions.set(sid, u.id);
+    res.json({ success: true, sessionId: sid, user: publicGameUser(u) });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Không thể tạo tài khoản.' });
+  }
+});
+
+app.post('/api/login', async (req, res) => {
+  try {
+    const u = await accountService.login(req.body?.username, req.body?.password);
+    const sid = crypto.randomUUID();
+    accountSessions.set(sid, u.id);
+    res.json({ success: true, sessionId: sid, user: publicGameUser(u) });
+  } catch (err) {
+    res.status(401).json({ error: err.message || 'Sai tài khoản hoặc mật khẩu.' });
+  }
+});
+
+app.get('/api/session-user', (req, res) => {
+  const u = sessionUser(req.query.sessionId || req.headers['x-session-id']);
+  if (!u) return res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.' });
+  res.json({ user: publicGameUser(u) });
+});
+
 const ROOMS = {}; 
 
 function getSafeRoom(room) {
@@ -35,24 +79,42 @@ function emitLobbyUpdate() {
   io.emit('lobby_update', { rooms: safeRooms });
 }
 
-app.post('/api/register', async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Thiếu thông tin!' });
-  if (USERS[username]) return res.status(400).json({ error: 'Tài khoản đã tồn tại!' });
+function syncUserBalanceInRooms(username, coins) {
+  Object.values(ROOMS).forEach(room => {
+    const player = room.players.find(p => p.username === username && !p.isBot);
+    if (player) player.balance = coins;
+  });
+}
 
-  const passwordHash = await bcrypt.hash(password, 8);
-  USERS[username] = { username, passwordHash, balance: 10000 };
-  res.json({ success: true, message: 'Đăng ký thành công! Tặng 10.000 xu.' });
-});
-
-app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
-  const user = USERS[username];
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-    return res.status(400).json({ error: 'Sai tài khoản hoặc mật khẩu!' });
+function pushAccountUpdate(username) {
+  const u = accountService.getUserByUsername ? accountService.getUserByUsername(username) : null;
+  if (!u) return;
+  syncUserBalanceInRooms(username, u.coins);
+  for (const s of io.sockets.sockets.values()) {
+    if (s.username === username) s.emit('account_balance', { balance: u.coins, user: u });
   }
-  res.json({ success: true, user: { username: user.username, balance: user.balance } });
-});
+}
+
+function settleGame(room, resultByUsername, meta = {}) {
+  if (!room || room.accountSettled) return;
+  room.accountSettled = true;
+  for (const p of room.players) {
+    if (p.isBot) continue;
+    const result = resultByUsername[p.username] || 'draw';
+    let delta = 0;
+    if (result === 'win') delta = 100;
+    else if (result === 'loss') delta = -25;
+    const updated = accountService.recordGameByUsername(p.username, result, 0, delta, { game: meta.game || room.type, room: room.name });
+    if (updated) {
+      p.balance = updated.coins;
+      for (const s of io.sockets.sockets.values()) {
+        if (s.username === p.username) s.emit('account_balance', { balance: updated.coins, user: updated });
+      }
+    }
+  }
+  emitRoomState(room.id);
+  emitLobbyUpdate();
+}
 
 function leaveCurrentRoom(socket) {
   const roomId = socket.currentRoomId;
@@ -212,6 +274,20 @@ function finalizeXiDachRound(room) {
     }
   });
 
+  const results = {};
+  room.players.forEach(p => {
+    if (p.isBot) return;
+    if (p.username === dealer.username) {
+      const playerResults = Object.values(room.xidachResults);
+      const wins = playerResults.filter(r => r.win).length;
+      const losses = playerResults.filter(r => !r.win && !String(r.msg).toLowerCase().includes('hòa')).length;
+      results[p.username] = wins > losses ? 'win' : losses > wins ? 'loss' : 'draw';
+    } else {
+      const r = room.xidachResults[p.username];
+      results[p.username] = r ? (r.msg.toLowerCase().includes('hòa') ? 'draw' : (r.win ? 'win' : 'loss')) : 'draw';
+    }
+  });
+  settleGame(room, results, { game: room.type });
   room.status = 'WAITING';
   io.to(room.id).emit('xidach_showdown', {
     dealer: { username: dealer.username, cards: dealer.cards, score: dScore.sum },
@@ -332,6 +408,10 @@ function runBotTurn(room) {
           io.to(room.id).emit('banner_notify', `❌ BẮT ĐƯỢC SÂM! Bot [${bot.username}] chặn thành công! [${room.baoSamPlayer}] ĐỀN LÀNG!`);
           room.lastWinner = bot.username;
           room.status = 'WAITING';
+          const results = {};
+          room.players.forEach(p => { if (!p.isBot) results[p.username] = p.username === bot.username ? 'win' : 'loss'; });
+          if (room.baoSamPlayer && !room.players.find(p => p.username === room.baoSamPlayer)?.isBot) results[room.baoSamPlayer] = 'loss';
+          settleGame(room, results, { game: room.type });
           room.baoSamPlayer = null;
           clearTimeout(room.turnTimer);
           emitRoomState(room.id);
@@ -368,6 +448,9 @@ function declareWinner(room, player) {
   clearTimeout(room.turnTimer);
   room.status = 'WAITING';
   room.lastWinner = player.username;
+  const results = {};
+  room.players.forEach(p => { if (!p.isBot) results[p.username] = p.username === player.username ? 'win' : 'loss'; });
+  settleGame(room, results, { game: room.type });
 
   if (room.type === 'sam' && room.baoSamPlayer === player.username) {
     io.to(room.id).emit('banner_notify', `🔥 [${player.username}] BÁO SÂM THÀNH CÔNG VÀ THẮNG TUYỆT ĐỐI!`);
@@ -382,16 +465,18 @@ function declareWinner(room, player) {
 io.on('connection', (socket) => {
   let currentUser = null;
 
-  socket.on('auth_session', ({ username }) => {
-    if (USERS[username]) {
-      currentUser = USERS[username];
-      currentUser.socketId = socket.id;
-      socket.username = username;
-      socket.emit('lobby_update', { rooms: Object.values(ROOMS).map(getSafeRoom), balance: currentUser.balance });
-    }
+  socket.on('auth_session', ({ sessionId }) => {
+    const u = sessionUser(sessionId);
+    if (!u) { socket.emit('auth_required'); return; }
+    currentUser = { ...u, balance: u.coins };
+    socket.username = u.username;
+    socket.sessionId = sessionId;
+    socket.emit('auth_ok', { user: publicGameUser(u) });
+    socket.emit('lobby_update', { rooms: Object.values(ROOMS).map(getSafeRoom), balance: u.coins });
   });
 
   socket.on('create_room', ({ roomName, gameType }) => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     if (!currentUser) return;
     const roomId = 'R_' + Math.random().toString(36).substring(2, 7).toUpperCase();
 
@@ -420,6 +505,7 @@ io.on('connection', (socket) => {
       samTimer: null,
       turnTimer: null,
       xidachResults: {},
+      accountSettled: false,
       deck: null
     };
 
@@ -430,6 +516,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('set_dealer', ({ username }) => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.status === 'PLAYING') return;
     if (room.host !== currentUser.username) return socket.emit('banner_notify', 'Chỉ chủ phòng mới được chuyển Cái!');
@@ -443,6 +530,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join_room', ({ roomId }) => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[roomId];
     if (!room) return socket.emit('banner_notify', 'Bàn không tồn tại!');
     if (room.players.length >= room.maxPlayers) return socket.emit('banner_notify', 'Bàn đã đủ người!');
@@ -458,6 +546,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('add_bot', () => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.status === 'PLAYING') return;
     if (room.host !== currentUser.username) return socket.emit('banner_notify', 'Chỉ chủ phòng mới được thêm Bot!');
@@ -481,6 +570,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('remove_bot', () => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.status === 'PLAYING') return;
     if (room.host !== currentUser.username) return;
@@ -494,6 +584,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('start_game', () => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.host !== currentUser.username) return;
     if (room.players.length < 2) return socket.emit('banner_notify', 'Cần tối thiểu 2 người để chơi!');
@@ -503,6 +594,7 @@ io.on('connection', (socket) => {
     room.passedPlayers = [];
     room.baoSamPlayer = null;
     room.xidachResults = {};
+    room.accountSettled = false;
 
     room.deck = new Deck();
     room.deck.shuffle();
@@ -574,6 +666,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('action_bao_sam', ({ isBao }) => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.type !== 'sam' || room.status !== 'BAO_SAM') return;
 
@@ -594,6 +687,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('play_cards', ({ cards }) => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.status !== 'PLAYING') return;
     if (room.currentTurn !== currentUser.username) return socket.emit('banner_notify', 'Chưa tới lượt của bạn!');
@@ -623,6 +717,10 @@ io.on('connection', (socket) => {
       io.to(room.id).emit('banner_notify', `❌ BẮT ĐƯỢC SÂM! [${currentUser.username}] đã chặn! [${room.baoSamPlayer}] ĐỀN LÀNG!`);
       room.lastWinner = currentUser.username;
       room.status = 'WAITING';
+      const results = {};
+      room.players.forEach(p => { if (!p.isBot) results[p.username] = p.username === currentUser.username ? 'win' : 'loss'; });
+      if (room.baoSamPlayer && room.baoSamPlayer !== currentUser.username && !room.players.find(p => p.username === room.baoSamPlayer)?.isBot) results[room.baoSamPlayer] = 'loss';
+      settleGame(room, results, { game: room.type });
       room.baoSamPlayer = null;
       clearTimeout(room.turnTimer);
       emitRoomState(room.id);
@@ -652,6 +750,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('pass_turn', () => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.status !== 'PLAYING') return;
     if (room.currentTurn !== currentUser.username) return socket.emit('banner_notify', 'Chưa tới lượt của bạn!');
@@ -662,6 +761,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('xidach_hit', () => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.type !== 'xidach' || room.currentTurn !== currentUser.username) return;
 
@@ -681,6 +781,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('xidach_stand', () => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.type !== 'xidach' || room.currentTurn !== currentUser.username) return;
 
@@ -699,6 +800,7 @@ io.on('connection', (socket) => {
 
   // NHÀ CÁI XÉT BÀI TỪNG NHÀ CON KHI ĐẠT >= 16 ĐIỂM
   socket.on('xidach_check_player', ({ targetUsername }) => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.type !== 'xidach' || room.status !== 'PLAYING') return;
     if (currentUser.username !== room.dealer) return socket.emit('banner_notify', 'Chỉ Nhà Cái mới có quyền xét bài!');
@@ -733,12 +835,23 @@ io.on('connection', (socket) => {
     }
   });
 
+  // FIX LỖI MẬU BINH KHÔNG HIỂN THỊ KẾT QUẢ SO BÀI
   socket.on('submit_binh', ({ chi1, chi2, chi3 }) => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     const room = ROOMS[socket.currentRoomId];
     if (!room || room.type !== 'binh') return;
 
     const player = room.players.find(p => p.username === currentUser.username);
-    if (!player) return;
+    if (!player || player.isBot || player.binhDone) return;
+    if (!Array.isArray(chi1) || !Array.isArray(chi2) || !Array.isArray(chi3) || chi1.length !== 5 || chi2.length !== 5 || chi3.length !== 3) {
+      return socket.emit('banner_notify', 'Binh Xập Xám phải xếp đúng 5 - 5 - 3 lá.');
+    }
+    const submitted = [...chi1, ...chi2, ...chi3];
+    const codes = submitted.map(c => c && c.code);
+    const owned = new Set((player.cards || []).map(c => c.code));
+    if (codes.some(c => !c || !owned.has(c)) || new Set(codes).size !== 13) {
+      return socket.emit('banner_notify', 'Bộ bài xếp không hợp lệ.');
+    }
 
     const isLung = checkBinhLung(chi1, chi2, chi3);
     player.binhChi = { chi1, chi2, chi3, isLung };
@@ -747,11 +860,35 @@ io.on('connection', (socket) => {
     if (isLung) socket.emit('banner_notify', 'Cảnh báo: Bạn đã bị BINH LỦNG!');
 
     if (room.players.every(p => p.binhDone)) {
-      room.status = 'WAITING';
+      room.status = 'COMPARING'; // Trạng thái đang so bài
       const chiScores = resolveBinhMatch(room.players);
-      io.to(room.id).emit('binh_showdown', { room: getSafeRoom(room), scores: chiScores });
+      const results = {};
+      const humanScores = room.players.filter(p => !p.isBot).map(p => [p.username, chiScores[p.username] || 0]);
+      humanScores.forEach(([username, score]) => { results[username] = score > 0 ? 'win' : score < 0 ? 'loss' : 'draw'; });
+      
+      settleGame(room, results, { game: room.type });
+      
+      // Gói dữ liệu chi tiết bài của tất cả người chơi để Client hiển thị
+      const showdownData = room.players.map(p => ({
+        username: p.username,
+        chi1: p.binhChi.chi1,
+        chi2: p.binhChi.chi2,
+        chi3: p.binhChi.chi3,
+        isLung: p.binhChi.isLung,
+        score: chiScores[p.username] || 0
+      }));
+      
+      io.to(room.id).emit('binh_showdown', showdownData);
       emitRoomState(room.id);
-      io.to(room.id).emit('game_ended', getSafeRoom(room));
+      
+      // Chờ 15s để người chơi xem kết quả rồi mới kết thúc ván
+      setTimeout(() => {
+        room.status = 'WAITING';
+        room.players.forEach(p => { p.binhDone = false; p.binhChi = null; p.cards = []; });
+        io.to(room.id).emit('game_ended', getSafeRoom(room));
+        emitRoomState(room.id);
+      }, 15000);
+
     } else {
       io.to(room.id).emit('player_binh_done', { username: player.username });
       emitRoomState(room.id);
@@ -759,14 +896,117 @@ io.on('connection', (socket) => {
   });
 
   socket.on('leave_room', () => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return socket.emit('auth_required');
     leaveCurrentRoom(socket);
     socket.emit('left_room_success');
   });
+// Xử lý gửi Chat & Thả Icon
+  socket.on('send_chat', ({ message, isEmote }) => {
+    if (!currentUser || !sessionUser(socket.sessionId)) return;
+    const room = ROOMS[socket.currentRoomId];
+    if (!room) return;
 
+    // Phát lại tin nhắn/icon cho tất cả mọi người trong phòng
+    io.to(room.id).emit('receive_chat', {
+      username: currentUser.username,
+      message: message,
+      isEmote: isEmote
+    });
+  });
   socket.on('disconnect', () => {
     leaveCurrentRoom(socket);
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server Game Casino đang chạy trên port: ${PORT}`));
+
+// ===== Royal Table Account API v6 =====
+function requireAccount(req,res,next){
+  const sid = String(req.headers['x-session-id'] || '');
+  const uid = accountSessions.get(sid);
+  if (!uid) return res.status(401).json({ok:false,error:'Phiên đăng nhập đã hết hạn.'});
+  req.accountUserId = uid; next();
+}
+
+app.post('/api/account/register', async (req,res)=>{
+  try { const u=await accountService.register(req.body.username,req.body.password,req.body.nickname,req.body.avatar); const sid=crypto.randomUUID(); accountSessions.set(sid,u.id); res.json({ok:true,sessionId:sid,user:publicGameUser(u)}); }
+  catch(e){res.status(400).json({ok:false,error:e.message});}
+});
+app.post('/api/account/login', async (req,res)=>{
+  try { const u=await accountService.login(req.body.username,req.body.password); const sid=crypto.randomUUID(); accountSessions.set(sid,u.id); res.json({ok:true,sessionId:sid,user:publicGameUser(u)}); }
+  catch(e){res.status(401).json({ok:false,error:e.message});}
+});
+app.post('/api/account/logout',(req,res)=>{ accountSessions.delete(String(req.headers['x-session-id']||'')); res.json({ok:true}); });
+
+// API Tặng Quà / Chuyển Xu (Tính năng mới)
+app.post('/api/account/gift', requireAccount, (req, res) => {
+  try {
+    const USERS_FILE = path.join(DATA_DIR, 'users.json');
+    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    
+    const senderIndex = users.findIndex(u => u.id === req.accountUserId);
+    const recipientUsername = String(req.body.recipientUsername || "").trim().toLowerCase();
+    const recipientIndex = users.findIndex(u => u.username === recipientUsername);
+    
+    if (senderIndex === -1) return res.status(401).json({ok: false, error: "Không tìm thấy người gửi."});
+    if (recipientIndex === -1) return res.status(404).json({ok: false, error: "Không tìm thấy tài khoản người nhận!"});
+    if (senderIndex === recipientIndex) return res.status(400).json({ok: false, error: "Không thể tự tặng cho chính mình!"});
+    
+    const amt = Number(req.body.amount);
+    if (isNaN(amt) || amt <= 0) return res.status(400).json({ok: false, error: "Số lượng xu tặng không hợp lệ!"});
+    if (users[senderIndex].coins < amt) return res.status(400).json({ok: false, error: "Số dư xu của bạn không đủ để tặng!"});
+    
+    users[senderIndex].coins -= amt;
+    users[recipientIndex].coins += amt;
+    
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    
+    pushAccountUpdate(users[senderIndex].username);
+    pushAccountUpdate(users[recipientIndex].username);
+
+    res.json({ ok: true, newBalance: users[senderIndex].coins, message: `Đã tặng ${amt.toLocaleString()} xu cho ${users[recipientIndex].nickname}!`});
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/account/me',requireAccount,(req,res)=>res.json({ok:true,user:publicGameUser(accountService.getUser(req.accountUserId))}));
+app.post('/api/account/password',requireAccount,async(req,res)=>{try{await accountService.changePassword(req.accountUserId,req.body.oldPassword,req.body.newPassword);res.json({ok:true});}catch(e){res.status(400).json({ok:false,error:e.message});}});
+app.post('/api/account/profile',requireAccount,(req,res)=>{try{res.json({ok:true,user:publicGameUser(accountService.updateProfile(req.accountUserId,req.body.nickname,req.body.avatar))});}catch(e){res.status(400).json({ok:false,error:e.message});}});
+app.get('/api/account/history',requireAccount,(req,res)=>res.json({ok:true,items:accountService.getHistory(req.accountUserId,req.query.limit)}));
+app.get('/api/leaderboard',(req,res)=>res.json({ok:true,items:accountService.leaderboard(50)}));
+// ===== End Account API v6 =====
+
+// Tự tạo acc GOD trước khi bật server
+async function seedGodAccount() {
+  // Tự động tạo thư mục data nếu chưa có
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  
+  const USERS_FILE = path.join(DATA_DIR, 'users.json');
+  
+  // Tự động tạo file users.json rỗng nếu chưa có
+  if (!fs.existsSync(USERS_FILE)) {
+    fs.writeFileSync(USERS_FILE, '[]');
+  }
+
+  try {
+    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    if (!users.some(u => u.username === 'god')) {
+      const hash = await bcrypt.hash('123456', 12);
+      users.push({
+        id: crypto.randomUUID(), username: 'god', passwordHash: hash,
+        nickname: '👑 GOD ADMIN', avatar: '👑', level: 99, xp: 99999, coins: 999999999999,
+        wins: 999, losses: 0, games: 999,
+        createdAt: new Date().toISOString(), lastLogin: new Date().toISOString()
+      });
+      fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+      console.log('👑 Đã tạo TÀI KHOẢN GOD MAX STATS (User: god / Pass: 123456)');
+    }
+  } catch(e) { console.error('Lỗi tạo God Account:', e); }
+}
+server.listen(PORT, async () => {
+  await seedGodAccount();
+  console.log(`Server Game Casino đang chạy trên port: ${PORT}`);
+});
