@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sòng Bài Hoàng Gia</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Montserrat', sans-serif; }
+
+    body {
+      background: radial-gradient(circle at center, #26123e 0%, #130720 70%, #08030d 100%);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+    }
+
+    .hidden { display: none !important; }
+
+    .viewport {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* TOP BAR */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 24px;
+      z-index: 50;
+      background: rgba(0, 0, 0, 0.25);
+    }
+    .room-name-badge {
+      font-size: 16px;
+      font-weight: 800;
+      color: #facc15;
+      letter-spacing: 0.5px;
+    }
+
+    /* NOTIFICATION BANNER */
+    #banner-notify {
+      position: absolute;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: linear-gradient(135deg, #eab308, #ca8a04);
+      color: #1a0f00;
+      padding: 8px 24px;
+      border-radius: 20px;
+      font-weight: 800;
+      font-size: 14px;
+      box-shadow: 0 4px 20px rgba(250, 204, 21, 0.5);
+      z-index: 100;
+      opacity: 0;
+      transition: all 0.25s ease;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #banner-notify.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* TABLE 3D AREA */
+    .table-area {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      perspective: 1000px;
+    }
+    .poker-table {
+      width: 90vw;
+      max-width: 1100px;
+      height: 58vh;
+      max-height: 460px;
+      background: radial-gradient(ellipse at 50% 45%, #2ee38d 0%, #159c5b 45%, #0a5832 85%, #05331c 100%);
+      border: 14px solid #a66a38;
+      border-radius: 240px;
+      box-shadow: 0 30px 60px rgba(0,0,0,0.85), inset 0 0 50px rgba(0,0,0,0.6);
+      position: relative;
+      transform: rotateX(14deg);
+    }
+
+    /* SEATS AROUND TABLE */
+    .seat {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform: translate(-50%, -50%);
+      z-index: 30;
+    }
+    .avatar-wrapper {
+      position: relative;
+      width: 52px;
+      height: 52px;
+    }
+    .avatar-circle {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: #1e1b4b;
+      border: 3px solid #facc15;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    }
+
+    .turn-clock {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #dc2626;
+      border: 2px solid #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 900;
+      color: #fff;
+      animation: bounce 0.6s infinite alternate;
+    }
+    @keyframes bounce {
+      from { transform: scale(1); }
+      to { transform: scale(1.15); }
+    }
+
+    .passed-badge {
+      position: absolute;
+      bottom: -6px;
+      background: #dc2626;
+      color: #fff;
+      font-size: 8px;
+      font-weight: 900;
+      padding: 2px 5px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    .seat-meta {
+      background: rgba(15, 8, 25, 0.9);
+      border: 1px solid rgba(250, 204, 21, 0.4);
+      border-radius: 10px;
+      padding: 2px 8px;
+      text-align: center;
+      margin-top: 4px;
+      min-width: 70px;
+    }
+    .seat-name { font-size: 10px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
+    .seat-cards-count { font-size: 10px; font-weight: 800; color: #facc15; }
+
+    /* CARD DESIGN */
+    .card-item {
+      width: 70px;
+      height: 102px;
+      background: #ffffff;
+      border-radius: 10px;
+      color: #111827;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 6px;
+      font-weight: 900;
+      font-size: 18px;
+      box-shadow: -3px 4px 10px rgba(0,0,0,0.45);
+      user-select: none;
+      cursor: pointer;
+      position: relative;
+      transition: transform 0.16s ease;
+      border: 1px solid #cbd5e1;
+    }
+    .card-item.red { color: #dc2626; }
+    .card-corner { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+    .card-corner-bottom { transform: rotate(180deg); }
+    .card-center-suit { align-self: center; font-size: 30px; margin-top: -6px; }
+
+    /* BOTTOM FAN CARDS */
+    .my-hand-tray {
+      height: 135px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      z-index: 40;
+      padding-bottom: 8px;
+    }
+    .my-hand-tray .card-item {
+      margin-left: -20px;
+    }
+    .my-hand-tray .card-item:first-child { margin-left: 0; }
+    .my-hand-tray .card-item:hover {
+      transform: translateY(-20px) scale(1.06);
+      z-index: 60 !important;
+    }
+    .my-hand-tray .card-item.selected {
+      transform: translateY(-34px) scale(1.1) !important;
+      border: 3px solid #facc15;
+      box-shadow: 0 0 16px rgba(250, 204, 21, 0.8);
+      z-index: 55 !important;
+    }
+
+    /* CENTER TABLE */
+    .table-center-cards {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      gap: 6px;
+      z-index: 25;
+    }
+
+    /* CONTROLS DOCK */
+    .dock-actions {
+      position: absolute;
+      bottom: 135px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      z-index: 50;
+    }
+    button {
+      padding: 9px 20px;
+      border: none;
+      border-radius: 12px;
+      font-weight: 800;
+      font-size: 13px;
+      color: #fff;
+      cursor: pointer;
+      text-transform: uppercase;
+      background: linear-gradient(180deg, #4ade80 0%, #16a34a 100%);
+      box-shadow: 0 4px 0 #14532d, 0 6px 12px rgba(0,0,0,0.4);
+      transition: all 0.15s;
+    }
+    button:hover { transform: translateY(-2px); filter: brightness(1.1); }
+    button:active { transform: translateY(2px); box-shadow: 0 2px 0 #14532d; }
+    .btn-red { background: linear-gradient(180deg, #f87171 0%, #dc2626 100%); box-shadow: 0 4px 0 #7f1d1d; }
+    .btn-gold { background: linear-gradient(180deg, #fde047 0%, #eab308 100%); color: #422006; box-shadow: 0 4px 0 #713f12; }
+    .btn-blue { background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%); box-shadow: 0 4px 0 #1e3a8a; }
+
+    .btn-inspect-mini {
+      margin-top: 4px;
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 900;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fde047 0%, #eab308 100%);
+      color: #422006;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+
+    /* POPUPS KHÔNG BỊ CHÌM/MỜ BÀN */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 200;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-card {
+      background: linear-gradient(145deg, #2b1747, #18092c);
+      border: 2px solid #facc15;
+      border-radius: 20px;
+      padding: 28px;
+      width: 90%;
+      max-width: 420px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(250, 204, 21, 0.35);
+    }
+    .modal-card input, .modal-card select, #dealer-select {
+      width: 100%;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      border-radius: 10px;
+      border: 1.5px solid rgba(250, 204, 21, 0.4);
+      background: #ffffff;
+      color: #111827;
+      font-size: 15px;
+      font-weight: 700;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .modal-card input:focus {
+      border-color: #facc15;
+      box-shadow: 0 0 10px rgba(250, 204, 21, 0.6);
+    }
+
+    .sam-modal {
+      position: absolute;
+      top: 35%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(135deg, #ea580c, #9a3412);
+      border: 3px solid #fde047;
+      padding: 16px 24px;
+      border-radius: 20px;
+      text-align: center;
+      z-index: 100;
+    }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+<div class="viewport">
+  <div id="banner-notify"></div>
+
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div id="table-title" class="room-name-badge">BÀN: CHƯA VÀO</div>
+    <div id="profile-tag" style="font-size:13px; font-weight:700;">Chưa đăng nhập</div>
+    <button onclick="leaveRoom()" class="btn-red" style="padding:6px 14px; font-size:11px;">Rời Bàn</button>
+  </div>
+
+  <!-- AUTH MODAL -->
+  <div id="auth-panel" class="modal-overlay">
+    <div class="modal-card">
+      <h2 style="color:#facc15; margin-bottom:18px; font-size:24px;">SÒNG BÀI HOÀNG GIA</h2>
+      <input type="text" id="auth-user" placeholder="Tên tài khoản...">
+      <input type="password" id="auth-pass" placeholder="Mật khẩu...">
+      <div style="display:flex; gap:10px;">
+        <button onclick="auth('login')" class="btn-gold" style="flex:1;">Đăng Nhập</button>
+        <button onclick="auth('register')" class="btn-blue" style="flex:1;">Đăng Ký</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOBBY MODAL -->
+  <div id="lobby-panel" class="modal-overlay hidden">
+    <div class="modal-card" style="max-width:500px;">
+      <h2 style="color:#facc15; margin-bottom:16px; font-size:20px;">CHỌN BÀN CƯỢC</h2>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input type="text" id="room-name" placeholder="Tên bàn..." style="flex:1;">
+        <select id="game-type" style="width:160px;">
+          <option value="tienlen">Tiến Lên Miền Nam</option>
+          <option value="sam">Sâm Lốc</option>
+          <option value="xidach">Xì Dách</option>
+          <option value="binh">Binh Xập Xám</option>
+        </select>
+      </div>
+      <button onclick="createRoom()" class="btn-gold" style="width:100%; margin-bottom:16px;">+ Tạo Bàn Mới</button>
+      <div id="room-list" style="max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+  </div>
+
+  <!-- 3D TABLE -->
+  <div class="table-area">
+    <div class="poker-table">
+      <!-- Vị trí các đối thủ quanh bàn -->
+      <div id="seats-container"></div>
+
+      <!-- Bài đánh giữa bàn -->
+      <div class="table-center-cards" id="table-center-cards"></div>
+
+      <!-- Kết quả Xì Dách -->
+      <div id="xidach-showdown-box" class="hidden" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.95); padding:16px 20px; border-radius:14px; border:2px solid #facc15; min-width:300px; z-index:70;">
+        <h3 style="color:#facc15; margin-bottom:8px; font-size:15px; text-align:center;">🎉 KẾT QUẢ SO BÀI</h3>
+        <div id="xidach-results" style="font-size:12px; line-height:1.6;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BÁO SÂM -->
+  <div id="sam-prompt" class="sam-modal hidden">
+    <div style="font-weight:900; font-size:16px; color:#fef08a;">🔥 BÁO SÂM? (<span id="sam-countdown">5</span>S)</div>
+    <div style="font-size:11px; margin:4px 0 10px;">Về nhất không ai chặn ăn cả làng. Bị chặn ĐỀN LÀNG!</div>
+    <div style="display:flex; gap:10px; justify-content:center;">
+      <button onclick="respondBaoSam(true)" class="btn-red" style="font-size:12px; padding:6px 14px;">Báo Sâm</button>
+      <button onclick="respondBaoSam(false)" class="btn-gold" style="font-size:12px; padding:6px 14px;">Bỏ Qua</button>
+    </div>
+  </div>
+
+  <!-- DOCK ACTION -->
+  <div class="dock-actions">
+    <button id="btn-start" onclick="startGame()" class="btn-gold">▶ Bắt Đầu Ván</button>
+    <button id="btn-add-bot" onclick="addBot()" class="btn-blue">➕ Thêm Bot</button>
+    <button id="btn-remove-bot" onclick="removeBot()" class="btn-red">➖ Xóa Bot</button>
+
+    <!-- CHỌN NHÀ CÁI XÌ DÁCH -->
+    <div id="dealer-select-box" class="hidden" style="display:flex; align-items:center; gap:6px;">
+      <label style="font-size:12px; font-weight:800; color:#facc15;">Cái: </label>
+      <select id="dealer-select" onchange="changeDealer(this.value)" style="width:auto; margin-bottom:0;"></select>
+    </div>
+
+    <!-- Tiến Lên & Sâm -->
+    <div id="turn-actions" class="hidden" style="display:flex; gap:10px;">
+      <button onclick="playSelectedCards()" class="btn-gold">Đánh Bài</button>
+      <button onclick="passTurn()" class="btn-red">Bỏ Lượt</button>
+    </div>
+
+    <!-- Xì Dách -->
+    <div id="xidach-actions" class="hidden" style="display:flex; gap:10px;">
+      <button onclick="xidachHit()" class="btn-blue">🃏 Rút Thêm</button>
+      <button onclick="xidachStand()" class="btn-gold">🛑 Dằn Bài</button>
+    </div>
+  </div>
+
+  <!-- TAY BÀI CỦA BẢN THÂN -->
+  <div class="my-hand-tray" id="my-cards"></div>
+</div>
+
+<script>
+  let socket = io();
+  let userProfile = null;
+  let currentRoom = null;
+  let selectedCards = [];
+
+  let turnTimerInterval = null;
+  let bannerTimeout = null;
+  let passedPlayersMap = {};
+
+  function showBanner(text) {
+    if (!text) return;
+    const el = document.getElementById('banner-notify');
+    el.innerText = text;
+    el.classList.add('show');
+    clearTimeout(bannerTimeout);
+    bannerTimeout = setTimeout(() => el.classList.remove('show'), 2500);
+  }
+
+  function resetTableUI() {
+    const xidachBox = document.getElementById('xidach-showdown-box');
+    if (xidachBox) {
+      xidachBox.classList.add('hidden');
+      document.getElementById('xidach-results').innerHTML = '';
+    }
+
+    document.getElementById('table-center-cards').innerHTML = '';
+    document.getElementById('my-cards').innerHTML = '';
+    document.getElementById('seats-container').innerHTML = '';
+    
+    clearInterval(turnTimerInterval);
+    document.querySelectorAll('.turn-clock').forEach(el => el.remove());
+    document.getElementById('sam-prompt').classList.add('hidden');
+    
+    selectedCards = [];
+    passedPlayersMap = {};
+  }
+
+  async function auth(type) {
+    const username = document.getElementById('auth-user').value.trim();
+    const password = document.getElementById('auth-pass').value.trim();
+    if (!username || !password) return showBanner('Vui lòng nhập đủ thông tin!');
+
+    showBanner(type === 'login' ? 'Đang đăng nhập...' : 'Đang xử lý đăng ký...');
+
+    try {
+      const res = await fetch(`/api/${type}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) return showBanner(data.error);
+
+      if (type === 'register') {
+        showBanner('🎉 ' + data.message);
+      }
+      if (type === 'login') {
+        userProfile = data.user;
+        document.getElementById('auth-panel').classList.add('hidden');
+        document.getElementById('lobby-panel').classList.remove('hidden');
+        document.getElementById('profile-tag').innerText = `👤 ${userProfile.username} | 💰 ${userProfile.balance} xu`;
+        showBanner(`Chào mừng [${userProfile.username}] quay trở lại!`);
+        socket.emit('auth_session', { username: userProfile.username });
+      }
+    } catch (e) {
+      showBanner('Lỗi kết nối máy chủ!');
+    }
+  }
+
+  function createRoom() {
+    const roomName = document.getElementById('room-name').value;
+    const gameType = document.getElementById('game-type').value;
+    socket.emit('create_room', { roomName, gameType });
+  }
+
+  function joinRoom(roomId) { socket.emit('join_room', { roomId }); }
+
+  function leaveRoom() {
+    showBanner('Đang rời bàn...');
+    socket.emit('leave_room');
+  }
+
+  function addBot() { socket.emit('add_bot'); }
+  function removeBot() { socket.emit('remove_bot'); }
+  function changeDealer(username) { if (username) socket.emit('set_dealer', { username }); }
+
+  function startGame() { 
+    resetTableUI();
+    socket.emit('start_game'); 
+  }
+
+  function xidachHit() { socket.emit('xidach_hit'); }
+  function xidachStand() { socket.emit('xidach_stand'); }
+  function checkPlayer(targetUsername) { socket.emit('xidach_check_player', { targetUsername }); }
+
+  function playSelectedCards() {
+    if (selectedCards.length === 0) return showBanner('Hãy chọn quân bài cần đánh!');
+    socket.emit('play_cards', { cards: selectedCards });
+    selectedCards = [];
+  }
+  function passTurn() { socket.emit('pass_turn'); }
+
+  function respondBaoSam(isBao) {
+    document.getElementById('sam-prompt').classList.add('hidden');
+    socket.emit('action_bao_sam', { isBao });
+  }
+
+  function toggleSelectCard(card) {
+    const idx = selectedCards.findIndex(c => c.code === card.code);
+    if (idx > -1) selectedCards.splice(idx, 1);
+    else selectedCards.push(card);
+    renderMyCards();
+  }
+
+  socket.on('banner_notify', (msg) => showBanner(msg));
+
+  socket.on('player_passed_notice', ({ username }) => {
+    passedPlayersMap[username] = true;
+    updateTableUI();
+  });
+
+  socket.on('turn_timer_start', ({ username, duration }) => {
+    clearInterval(turnTimerInterval);
+    let remain = duration;
+    
+    document.querySelectorAll('.turn-clock').forEach(el => el.remove());
+    const targetWrapper = document.getElementById(`avatar-wrap-${username}`);
+    if (targetWrapper) {
+      const clockEl = document.createElement('div');
+      clockEl.className = 'turn-clock';
+      clockEl.id = `clock-${username}`;
+      clockEl.innerText = `${remain}s`;
+      targetWrapper.appendChild(clockEl);
+    }
+
+    turnTimerInterval = setInterval(() => {
+      remain--;
+      const el = document.getElementById(`clock-${username}`);
+      if (el) el.innerText = `${remain}s`;
+      if (remain <= 0) clearInterval(turnTimerInterval);
+    }, 1000);
+  });
+
+  socket.on('left_room_success', () => {
+    resetTableUI();
+    currentRoom = null;
+    document.getElementById('table-title').innerText = 'BÀN: CHƯA VÀO';
+    document.getElementById('lobby-panel').classList.remove('hidden');
+    showBanner('Đã rời bàn thành công!');
+  });
+
+  socket.on('lobby_update', ({ rooms, balance }) => {
+    if (balance !== undefined && userProfile) {
+      userProfile.balance = balance;
+      document.getElementById('profile-tag').innerText = `👤 ${userProfile.username} | 💰 ${userProfile.balance} xu`;
+    }
+    const list = document.getElementById('room-list');
+    if (!rooms || rooms.length === 0) {
+      list.innerHTML = '<p style="color:#94a3b8; font-size:13px;">Chưa có bàn mở. Hãy tạo bàn!</p>';
+      return;
+    }
+    list.innerHTML = rooms.map(r => `
+      <div style="background:rgba(255,255,255,0.06); padding:10px 14px; border-radius:10px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="text-align:left;">
+          <div style="font-weight:800; color:#fff;">${r.name}</div>
+          <div style="font-size:11px; color:#facc15;">${r.type.toUpperCase()} • ${r.players.length}/${r.maxPlayers} người</div>
+        </div>
+        <button onclick="joinRoom('${r.id}')" class="btn-gold" style="padding:6px 14px; font-size:11px;" ${r.status === 'PLAYING' ? 'disabled style="opacity:0.4;"' : ''}>Vào</button>
+      </div>
+    `).join('');
+  });
+
+  socket.on('room_joined', (room) => {
+    resetTableUI();
+    currentRoom = room;
+    document.getElementById('lobby-panel').classList.add('hidden');
+    showBanner(`Đã vào bàn [${room.name}]`);
+    updateTableUI();
+  });
+
+  socket.on('room_state_change', (room) => {
+    currentRoom = room;
+    updateTableUI();
+  });
+
+  socket.on('game_started', (room) => {
+    resetTableUI();
+    currentRoom = room;
+    showBanner('Ván đấu bắt đầu!');
+    updateTableUI();
+  });
+
+  socket.on('game_ended', (room) => {
+    currentRoom = room;
+    selectedCards = [];
+    clearInterval(turnTimerInterval);
+    document.getElementById('sam-prompt').classList.add('hidden');
+    document.querySelectorAll('.turn-clock').forEach(el => el.remove());
+    updateTableUI();
+  });
+
+  socket.on('sam_start_bao', ({ time }) => {
+    document.getElementById('sam-prompt').classList.remove('hidden');
+    let rem = time;
+    document.getElementById('sam-countdown').innerText = rem;
+    const si = setInterval(() => {
+      rem--;
+      if (rem <= 0) {
+        clearInterval(si);
+        document.getElementById('sam-prompt').classList.add('hidden');
+      } else {
+        document.getElementById('sam-countdown').innerText = rem;
+      }
+    }, 1000);
+  });
+
+  socket.on('xidach_showdown', ({ dealer, results }) => {
+    document.getElementById('xidach-showdown-box').classList.remove('hidden');
+    const resBox = document.getElementById('xidach-results');
+    resBox.innerHTML = `
+      <div style="color:#facc15; font-weight:800; margin-bottom:8px; border-bottom:1px solid #444; padding-bottom:4px;">
+        👑 Cái (${dealer.username}): ${dealer.cards.map(c => c.code).join(' ')} - ${dealer.score}đ
+      </div>
+    ` + results.map(r => `<div>${r.win ? '🟢' : '🔴'} <b>${r.username}</b>: ${r.cards.map(c => c.code).join(' ')} (${r.score}đ) -> <b>${r.msg}</b></div>`).join('');
+  });
+
+  function createCardElement(c) {
+    const isRed = (c.suit === '♦' || c.suit === '♥');
+    const isSelected = selectedCards.some(sc => sc.code === c.code);
+    const div = document.createElement('div');
+    div.className = `card-item ${isRed ? 'red' : ''} ${isSelected ? 'selected' : ''}`;
+    div.innerHTML = `
+      <div class="card-corner"><span>${c.rank}</span><span style="font-size:14px;">${c.suit}</span></div>
+      <div class="card-center-suit">${c.suit}</div>
+      <div class="card-corner card-corner-bottom"><span>${c.rank}</span><span style="font-size:14px;">${c.suit}</span></div>
+    `;
+    return div;
+  }
+
+  function updateTableUI() {
+    if (!currentRoom) return;
+
+    document.getElementById('table-title').innerText = `${currentRoom.name} [${currentRoom.type.toUpperCase()}]`;
+
+    const isDealer = currentRoom.dealer === userProfile.username;
+    let dealerPoints = 0;
+    if (isDealer && currentRoom.type === 'xidach') {
+      const me = currentRoom.players.find(p => p.username === userProfile.username);
+      if (me && me.cards) {
+        dealerPoints = calcHandSum(me.cards);
+      }
+    }
+
+    const seatsContainer = document.getElementById('seats-container');
+    seatsContainer.innerHTML = '';
+
+    const opponents = currentRoom.players.filter(p => p.username !== userProfile.username);
+    const total = opponents.length;
+
+    opponents.forEach((p, index) => {
+      const angle = Math.PI + (Math.PI / (total + 1)) * (index + 1);
+      const xPercent = 50 + 44 * Math.cos(angle);
+      const yPercent = 50 + 40 * Math.sin(angle);
+
+      const isTurn = currentRoom.status === 'PLAYING' && currentRoom.currentTurn === p.username;
+      const isPassed = Boolean(passedPlayersMap[p.username]);
+      const checkedResult = currentRoom.xidachResults && currentRoom.xidachResults[p.username];
+      
+      const canInspect = isDealer && currentRoom.type === 'xidach' && currentRoom.status === 'PLAYING' && currentRoom.currentTurn === currentRoom.dealer && dealerPoints >= 16 && !checkedResult;
+
+      const seatDiv = document.createElement('div');
+      seatDiv.className = 'seat';
+      seatDiv.style.left = `${xPercent}%`;
+      seatDiv.style.top = `${yPercent}%`;
+
+      seatDiv.innerHTML = `
+        <div class="avatar-wrapper" id="avatar-wrap-${p.username}">
+          <div class="avatar-circle" style="${isTurn ? 'border-color:#4ade80; box-shadow:0 0 16px #4ade80;' : ''}">
+            ${p.isBot ? '🤖' : '👤'}
+          </div>
+          ${isPassed ? `<div class="passed-badge">ĐÃ QUA</div>` : ''}
+        </div>
+        <div class="seat-meta">
+          <div class="seat-name">${p.username === currentRoom.dealer ? '👑 [CÁI] ' : ''}${p.username}</div>
+          <div class="seat-cards-count">${p.cards ? p.cards.length : 0} lá ${p.xidachDone ? '✓' : ''}</div>
+          ${checkedResult ? `<div style="font-size:9px; color:#4ade80; font-weight:800;">Đã xét</div>` : ''}
+        </div>
+        ${canInspect ? `<button class="btn-inspect-mini" onclick="checkPlayer('${p.username}')">🔍 Xét</button>` : ''}
+      `;
+      seatsContainer.appendChild(seatDiv);
+    });
+
+    const isHost = currentRoom.host === userProfile.username;
+    const isWaiting = (currentRoom.status === 'WAITING');
+
+    document.getElementById('btn-start').classList.toggle('hidden', !isHost || !isWaiting);
+    document.getElementById('btn-add-bot').classList.toggle('hidden', !isHost || !isWaiting);
+    document.getElementById('btn-remove-bot').classList.toggle('hidden', !isHost || !isWaiting);
+
+    const dealerBox = document.getElementById('dealer-select-box');
+    const dealerSelect = document.getElementById('dealer-select');
+    if (currentRoom.type === 'xidach' && isWaiting && isHost) {
+      dealerBox.classList.remove('hidden');
+      dealerSelect.innerHTML = currentRoom.players.map(p => `
+        <option value="${p.username}" ${p.username === currentRoom.dealer ? 'selected' : ''}>
+          ${p.isBot ? '🤖 ' : ''}${p.username} ${p.username === currentRoom.dealer ? '(Đang làm Cái)' : ''}
+        </option>
+      `).join('');
+    } else {
+      dealerBox.classList.add('hidden');
+    }
+
+    const centerCardsBox = document.getElementById('table-center-cards');
+    centerCardsBox.innerHTML = '';
+    if (['tienlen', 'sam'].includes(currentRoom.type) && currentRoom.tableCards && currentRoom.tableCards.length > 0) {
+      currentRoom.tableCards.forEach(c => centerCardsBox.appendChild(createCardElement(c)));
+    }
+
+    const isMyTurn = currentRoom.status === 'PLAYING' && currentRoom.currentTurn === userProfile.username;
+    document.getElementById('turn-actions').classList.toggle('hidden', !isMyTurn || !['tienlen', 'sam'].includes(currentRoom.type));
+    document.getElementById('xidach-actions').classList.toggle('hidden', !isMyTurn || currentRoom.type !== 'xidach');
+
+    renderMyCards();
+  }
+
+  function calcHandSum(cards) {
+    let sum = 0, aces = 0;
+    for (let c of cards) {
+      if (['J','Q','K'].includes(c.rank)) sum += 10;
+      else if (c.rank === 'A') { aces++; sum += 11; }
+      else sum += parseInt(c.rank, 10);
+    }
+    while (sum > 21 && aces > 0) { sum -= 10; aces--; }
+    if (cards.length === 2 && cards[0].rank === 'A' && cards[1].rank === 'A') return 21;
+    return sum;
+  }
+
+  function renderMyCards() {
+    const cardBox = document.getElementById('my-cards');
+    if (!currentRoom) return;
+    const me = currentRoom.players.find(p => p.username === userProfile.username);
+    if (!me || !me.cards || me.cards.length === 0) {
+      cardBox.innerHTML = '';
+      return;
+    }
+    cardBox.innerHTML = '';
+    me.cards.forEach((c, index) => {
+      const div = createCardElement(c);
+      div.style.zIndex = index + 1;
+      div.onclick = () => toggleSelectCard(c);
+      cardBox.appendChild(div);
+    });
+  }
+</script>
+</body>
+</html>
