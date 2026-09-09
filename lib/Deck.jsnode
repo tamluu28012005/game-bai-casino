@@ -1,0 +1,131 @@
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const bcrypt = require('bcryptjs');
+const Deck = require('./lib/Deck');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
+app.use(express.static('public'));
+app.use(express.json());
+
+// Cơ sở dữ liệu in-memory (Test thực chiến, có thể đổi sang MongoDB/PostgreSQL sau)
+const USERS = {}; // { username: { passwordHash, balance, socketId } }
+const ROOMS = {}; // { roomId: { id, name, type, maxPlayers, players: [], state, deck } }
+
+// --- REST API: AUTHENTICATION ---
+app.post('/api/register', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Thiếu thông tin!' });
+  if (USERS[username]) return res.status(400).json({ error: 'Tài khoản đã tồn tại!' });
+
+  const passwordHash = await bcrypt.hash(password, 8);
+  USERS[username] = { username, passwordHash, balance: 10000 };
+  res.json({ success: true, message: 'Đăng ký thành công! Đã tặng 10.000 xu.' });
+});
+
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  const user = USERS[username];
+  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    return res.status(400).json({ error: 'Sai tài khoản hoặc mật khẩu!' });
+  }
+  res.json({ success: true, user: { username: user.username, balance: user.balance } });
+});
+
+// --- REAL-TIME ENGINE (SOCKET.IO) ---
+io.on('connection', (socket) => {
+  let currentUser = null;
+
+  // Định danh kết nối sau khi Client đăng nhập thành công
+  socket.on('auth_session', ({ username }) => {
+    if (USERS[username]) {
+      currentUser = USERS[username];
+      currentUser.socketId = socket.id;
+      socket.emit('lobby_update', { rooms: Object.values(ROOMS), balance: currentUser.balance });
+    }
+  });
+
+  // Tạo bàn chơi mới
+  socket.on('create_room', ({ roomName, gameType, betAmount }) => {
+    if (!currentUser) return;
+    const roomId = 'R_' + Math.random().toString(36).substring(2, 7).toUpperCase();
+
+    // Giới hạn người chơi theo luật từng game
+    let max = 4; // Tiến Lên, Phỏm, Sâm
+    if (gameType === 'xidach') max = 5;
+    if (gameType === 'poker') max = 6;
+
+    ROOMS[roomId] = {
+      id: roomId,
+      name: roomName || `Bàn ${roomId}`,
+      type: gameType, // 'tienlen' | 'phom' | 'sam' | 'xidach' | 'poker'
+      betAmount: betAmount || 100,
+      maxPlayers: max,
+      players: [{ username: currentUser.username, balance: currentUser.balance, cards: [] }],
+      status: 'WAITING', // 'WAITING' | 'PLAYING'
+    };
+
+    socket.join(roomId);
+    socket.currentRoomId = roomId;
+    socket.emit('room_joined', ROOMS[roomId]);
+    io.emit('lobby_update', { rooms: Object.values(ROOMS) });
+  });
+
+  // Tham gia phòng có sẵn
+  socket.on('join_room', ({ roomId }) => {
+    const room = ROOMS[roomId];
+    if (!room) return socket.emit('toast', 'Bàn không tồn tại!');
+    if (room.players.length >= room.maxPlayers) return socket.emit('toast', 'Bàn đã đầy!');
+    if (room.status === 'PLAYING') return socket.emit('toast', 'Bàn đang đánh, vui lòng đợi!');
+
+    room.players.push({ username: currentUser.username, balance: currentUser.balance, cards: [] });
+    socket.join(roomId);
+    socket.currentRoomId = roomId;
+
+    socket.emit('room_joined', room);
+    io.to(roomId).emit('room_state_change', room);
+    io.emit('lobby_update', { rooms: Object.values(ROOMS) });
+  });
+
+  // Chủ bàn bắt đầu ván đấu
+  socket.on('start_game', () => {
+    const room = ROOMS[socket.currentRoomId];
+    if (!room || room.players[0].username !== currentUser.username) return;
+    if (room.players.length < 2) return socket.emit('toast', 'Cần tối thiểu 2 người để chơi!');
+
+    room.status = 'PLAYING';
+    const deck = new Deck();
+    deck.shuffle();
+
+    // Chia bài theo luật trò chơi
+    let cardsPerPlayer = 13; // Tiến Lên
+    if (room.type === 'sam') cardsPerPlayer = 10;
+    if (room.type === 'phom') cardsPerPlayer = 9;
+    if (room.type === 'xidach') cardsPerPlayer = 2;
+    if (room.type === 'poker') cardsPerPlayer = 2;
+
+    room.players.forEach(p => {
+      p.cards = deck.deal(cardsPerPlayer);
+    });
+
+    io.to(room.id).emit('game_started', room);
+  });
+
+  socket.on('disconnect', () => {
+    if (socket.currentRoomId && ROOMS[socket.currentRoomId]) {
+      const room = ROOMS[socket.currentRoomId];
+      room.players = room.players.filter(p => p.username !== (currentUser?.username));
+      if (room.players.length === 0) {
+        delete ROOMS[socket.currentRoomId];
+      } else {
+        io.to(room.id).emit('room_state_change', room);
+      }
+      io.emit('lobby_update', { rooms: Object.values(ROOMS) });
+    }
+  });
+});
+
+server.listen(3000, () => console.log('Hệ thống Game Hub sẵn sàng: http://localhost:3000'));
