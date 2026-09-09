@@ -1,0 +1,17 @@
+[
+  {
+    "id": "bbb81449-b66c-4d17-aef9-5af839134cc3",
+    "username": "god",
+    "passwordHash": "$2b$12$GYB0SChdlO4HeBECM.pUwef/hyOsy8923EsYha6uj5HF734nqEezq",
+    "nickname": "👑 GOD ADMIN",
+    "avatar": "👑",
+    "level": 1001,
+    "xp": 100079,
+    "coins": 1000000000399,
+    "wins": 1003,
+    "losses": 0,
+    "games": 1003,
+    "createdAt": "2026-09-09T14:15:08.470Z",
+    "lastLogin": "2026-09-09T14:41:00.474Z"
+  }
+]

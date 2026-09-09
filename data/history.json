@@ -1,0 +1,46 @@
+[
+  {
+    "id": "ade57d87-45ee-4661-88b4-fd8a76fee51b",
+    "userId": "bbb81449-b66c-4d17-aef9-5af839134cc3",
+    "result": "win",
+    "bet": 0,
+    "delta": 100,
+    "coins": 1000000000399,
+    "game": "tienlen",
+    "room": "cái con caj",
+    "createdAt": "2026-09-09T14:19:51.550Z"
+  },
+  {
+    "id": "ac78c073-4dc8-4310-b1ec-72f243822bab",
+    "userId": "bbb81449-b66c-4d17-aef9-5af839134cc3",
+    "result": "win",
+    "bet": 0,
+    "delta": 100,
+    "coins": 1000000000299,
+    "game": "xidach",
+    "room": "cái con caj",
+    "createdAt": "2026-09-09T14:18:47.121Z"
+  },
+  {
+    "id": "7f0a3dec-c6c7-4d7b-b929-e9c76442cce3",
+    "userId": "bbb81449-b66c-4d17-aef9-5af839134cc3",
+    "result": "win",
+    "bet": 0,
+    "delta": 100,
+    "coins": 1000000000199,
+    "game": "xidach",
+    "room": "cái con caj",
+    "createdAt": "2026-09-09T14:17:57.735Z"
+  },
+  {
+    "id": "900b3735-6683-4f29-8a74-364eac205315",
+    "userId": "bbb81449-b66c-4d17-aef9-5af839134cc3",
+    "result": "win",
+    "bet": 0,
+    "delta": 100,
+    "coins": 1000000000099,
+    "game": "binh",
+    "room": "cái con caj",
+    "createdAt": "2026-09-09T14:16:52.313Z"
+  }
+]
