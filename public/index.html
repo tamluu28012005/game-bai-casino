@@ -6,6 +6,10 @@
   <title>Sòng Bài Hoàng Gia</title>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&display=swap" rel="stylesheet">
   <style>
+	@keyframes floatUp { 
+      0% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } 
+      100% { opacity: 0; transform: translateX(-50%) translateY(-50px) scale(1.8); } 
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Montserrat', sans-serif; }
 
     body {
@@ -316,6 +320,38 @@
       text-align: center;
       z-index: 100;
     }
+
+    /* V6 polish: tactile cards, chip/turn feedback, Binh responsive layout */
+    .card-item, .binh-mini-card { transform-origin:center bottom; }
+    .card-item.dealt { animation: cardDeal .38s cubic-bezier(.2,.8,.2,1) both; }
+    @keyframes cardDeal { from{opacity:0;transform:translateY(-35px) rotate(-7deg) scale(.8)} to{opacity:1;transform:none} }
+    @keyframes chipShake {0%,100%{transform:translateX(0)}25%{transform:translateX(-2px) rotate(-1deg)}75%{transform:translateX(2px) rotate(1deg)}}
+    .account-bump { animation:chipShake .32s ease; }
+    .binh-zone { background:rgba(255,255,255,.035);border:1px solid rgba(245,196,81,.16);border-radius:16px;padding:10px;min-height:170px; }
+    .binh-zone>div:first-child {display:flex;justify-content:space-between;align-items:center;color:#f5c451;font-size:12px;margin-bottom:8px}
+    .binh-zone small {display:block;color:#9ba4b7;font-size:9px}
+    .binh-zone-cards {display:flex;gap:4px;flex-wrap:wrap;min-height:78px;align-items:center}
+    .binh-mini-card {width:44px;height:62px;border-radius:8px;background:linear-gradient(145deg,#fff,#dfe5ef);color:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:16px;box-shadow:0 5px 12px rgba(0,0,0,.25);cursor:pointer;border:2px solid transparent}
+    .binh-mini-card span {font-size:18px}.binh-mini-card.red{color:#dc2626}.binh-mini-card.picked{border-color:#f5c451;box-shadow:0 0 14px rgba(245,196,81,.55);transform:translateY(-5px)}
+    #binh-available .binh-mini-card {width:50px;height:70px}
+
+    /* GIAO DIỆN SHOWDOWN MẬU BINH ĐẸP MẮT */
+    #binh-showdown-modal { z-index: 450; }
+    .showdown-player { background: rgba(0,0,0,0.5); padding: 10px; border-radius: 12px; margin-bottom: 12px; border: 1px solid #444; }
+    .showdown-player.winner { border-color: #4ade80; box-shadow: 0 0 15px rgba(74, 222, 128, 0.3); }
+    .showdown-player.loser { border-color: #dc2626; }
+    .showdown-chi-row { display: flex; gap: 4px; justify-content: center; margin-top: 4px;}
+    .showdown-chi-row .binh-mini-card { width: 30px; height: 42px; font-size: 11px; cursor: default; }
+    .showdown-chi-row .binh-mini-card span { font-size: 13px; }
+
+    @media(max-width:700px){
+      .top-bar{padding:8px 10px;gap:6px}.room-name-badge{font-size:11px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .top-bar button{font-size:9px!important;padding:5px 8px!important}.poker-table{width:96vw;height:55vh;border-width:9px}
+      .my-hand-tray{transform:scale(.82);transform-origin:bottom center;bottom:3px!important}
+      .dock-actions{gap:5px!important;padding:6px!important}.dock-actions button{font-size:10px!important;padding:7px 9px!important}
+      .binh-zones{grid-template-columns:1fr!important}.binh-zone{min-height:145px}.binh-mini-card{width:39px;height:56px}
+      #binh-panel>div{padding:13px!important}
+    }
   </style>
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -328,6 +364,7 @@
   <div class="top-bar">
     <div id="table-title" class="room-name-badge">BÀN: CHƯA VÀO</div>
     <div id="profile-tag" style="font-size:13px; font-weight:700;">Chưa đăng nhập</div>
+    <button onclick="RTAccount.open()" class="btn-gold" style="padding:6px 14px;font-size:11px;">Hồ sơ</button>
     <button onclick="leaveRoom()" class="btn-red" style="padding:6px 14px; font-size:11px;">Rời Bàn</button>
   </div>
 
@@ -347,6 +384,17 @@
   <!-- LOBBY MODAL -->
   <div id="lobby-panel" class="modal-overlay hidden">
     <div class="modal-card" style="max-width:500px;">
+      
+      <!-- Khung Tặng Xu / Quà -->
+      <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:12px; margin-bottom:16px; border:1px solid rgba(250,204,21,0.2);">
+        <div style="font-size:12px; font-weight:800; color:#facc15; margin-bottom:6px; text-align:left;">🎁 Tặng Xu Cho Bạn Bè</div>
+        <div style="display:flex; gap:6px;">
+          <input type="text" id="gift-user" placeholder="Tên người nhận..." style="margin-bottom:0; font-size:12px; padding:8px;">
+          <input type="number" id="gift-amt" placeholder="Số xu..." style="margin-bottom:0; width:100px; font-size:12px; padding:8px;">
+          <button onclick="sendGift()" class="btn-gold" style="padding:8px 12px; font-size:11px;">Tặng</button>
+        </div>
+      </div>
+
       <h2 style="color:#facc15; margin-bottom:16px; font-size:20px;">CHỌN BÀN CƯỢC</h2>
       <div style="display:flex; gap:8px; margin-bottom:12px;">
         <input type="text" id="room-name" placeholder="Tên bàn..." style="flex:1;">
@@ -379,6 +427,37 @@
     </div>
   </div>
 
+  <!-- SO BÀI MẬU BINH (SHOWDOWN) -->
+  <div id="binh-showdown-modal" class="modal-overlay hidden">
+    <div class="modal-card" style="max-width: 700px; max-height: 90vh; overflow-y:auto;">
+      <h2 style="color:#facc15; font-size:24px; margin-bottom:16px;">⚔️ KẾT QUẢ SO CHI MẬU BINH</h2>
+      <div id="binh-showdown-content"></div>
+      <button onclick="document.getElementById('binh-showdown-modal').classList.add('hidden')" class="btn-red" style="margin-top:16px; width:100%;">Đóng</button>
+    </div>
+  </div>
+
+  <!-- BINH XẬP XÁM -->
+  <div id="binh-panel" class="hidden" style="position:fixed;inset:0;z-index:420;background:rgba(2,4,8,.82);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:14px;">
+    <div style="width:min(96vw,920px);max-height:92vh;overflow:auto;background:linear-gradient(145deg,#151b28,#080b11);border:1px solid rgba(245,196,81,.35);border-radius:22px;padding:20px;box-shadow:0 30px 100px #000;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;">
+        <div><div style="font-size:10px;letter-spacing:3px;color:#9ba4b7;font-weight:900">13-CARD ARRANGEMENT</div><h2 style="color:#f5c451;margin-top:4px;">🀄 XẾP BINH XẬP XÁM</h2></div>
+        <button onclick="closeBinh()" class="btn-red">Đóng</button>
+      </div>
+      <div id="binh-available" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:10px;background:rgba(255,255,255,.03);border-radius:16px;min-height:82px;"></div>
+      <div class="binh-zones" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px;">
+        <div class="binh-zone" data-chi="1"><div><b>CHI 1</b><small>5 lá • Mạnh nhất</small></div><div id="binh-chi1" class="binh-zone-cards"></div><button onclick="assignToBinh(1)" class="btn-blue">Xếp vào Chi 1</button></div>
+        <div class="binh-zone" data-chi="2"><div><b>CHI 2</b><small>5 lá • Thấp hơn Chi 1</small></div><div id="binh-chi2" class="binh-zone-cards"></div><button onclick="assignToBinh(2)" class="btn-blue">Xếp vào Chi 2</button></div>
+        <div class="binh-zone" data-chi="3"><div><b>CHI 3</b><small>3 lá • Thấp hơn Chi 2</small></div><div id="binh-chi3" class="binh-zone-cards"></div><button onclick="assignToBinh(3)" class="btn-blue">Xếp vào Chi 3</button></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px;">
+        <button onclick="autoArrangeBinh()" class="btn-gold">⚡ Xếp tự động</button>
+        <button onclick="clearBinhArrange()" class="btn-red">↺ Xếp lại</button>
+        <button onclick="submitBinhArrange()" class="btn-gold">✓ Xác nhận 13 lá</button>
+      </div>
+      <div id="binh-hint" style="text-align:center;color:#9ba4b7;font-size:12px;margin-top:8px;">Chọn các lá ở phía trên rồi bấm Chi 1/2/3. Lá đã xếp có thể bấm để đưa về khu vực chọn.</div>
+    </div>
+  </div>
+
   <!-- BÁO SÂM -->
   <div id="sam-prompt" class="sam-modal hidden">
     <div style="font-weight:900; font-size:16px; color:#fef08a;">🔥 BÁO SÂM? (<span id="sam-countdown">5</span>S)</div>
@@ -386,6 +465,28 @@
     <div style="display:flex; gap:10px; justify-content:center;">
       <button onclick="respondBaoSam(true)" class="btn-red" style="font-size:12px; padding:6px 14px;">Báo Sâm</button>
       <button onclick="respondBaoSam(false)" class="btn-gold" style="font-size:12px; padding:6px 14px;">Bỏ Qua</button>
+    </div>
+  </div>
+
+<!-- IN-GAME CHAT & EMOTE -->
+  <div id="chat-container" class="hidden" style="position:absolute; bottom: 20px; left: 20px; z-index: 100; background: rgba(0,0,0,0.65); padding: 12px; border-radius: 14px; width: 260px; border: 1px solid rgba(250, 204, 21, 0.3);">
+    <div id="chat-messages" style="height: 120px; overflow-y: auto; margin-bottom: 8px; font-size: 12px; color: #e2e8f0; display: flex; flex-direction: column; gap: 4px;">
+      <div style="color: #facc15; font-style: italic;">Hệ thống: Chào mừng đến với bàn chơi!</div>
+    </div>
+    
+    <!-- Các nút thả Icon -->
+    <div style="display: flex; gap: 6px; margin-bottom: 8px; justify-content: space-between;">
+      <button onclick="sendEmote('👍')" style="padding: 4px 8px; font-size: 18px; background: rgba(255,255,255,0.1); border: 1px solid #555;">👍</button>
+      <button onclick="sendEmote('😂')" style="padding: 4px 8px; font-size: 18px; background: rgba(255,255,255,0.1); border: 1px solid #555;">😂</button>
+      <button onclick="sendEmote('😡')" style="padding: 4px 8px; font-size: 18px; background: rgba(255,255,255,0.1); border: 1px solid #555;">😡</button>
+      <button onclick="sendEmote('🍅')" style="padding: 4px 8px; font-size: 18px; background: rgba(255,255,255,0.1); border: 1px solid #555;">🍅</button>
+      <button onclick="sendEmote('💩')" style="padding: 4px 8px; font-size: 18px; background: rgba(255,255,255,0.1); border: 1px solid #555;">💩</button>
+    </div>
+    
+    <!-- Nhập tin nhắn -->
+    <div style="display: flex; gap: 6px;">
+      <input type="text" id="chat-input" placeholder="Nhắn gì đó..." style="flex:1; padding: 6px 10px; font-size: 12px; border-radius: 8px; border: none; outline: none; color: #111;">
+      <button onclick="sendChat()" class="btn-blue" style="padding: 6px 12px; font-size: 12px;">Gửi</button>
     </div>
   </div>
 
@@ -405,6 +506,10 @@
     <div id="turn-actions" class="hidden" style="display:flex; gap:10px;">
       <button onclick="playSelectedCards()" class="btn-gold">Đánh Bài</button>
       <button onclick="passTurn()" class="btn-red">Bỏ Lượt</button>
+    </div>
+
+    <div id="binh-actions" class="hidden" style="display:flex;gap:10px;">
+      <button onclick="openBinh()" class="btn-gold">🀄 Xếp Binh</button>
     </div>
 
     <!-- Xì Dách -->
@@ -428,6 +533,9 @@
   let bannerTimeout = null;
   let passedPlayersMap = {};
 
+  let audioCtx=null;
+  function uiSound(freq=520,duration=.045){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=freq;o.type='sine';g.gain.value=.025;o.connect(g);g.connect(audioCtx.destination);o.start();g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+duration);o.stop(audioCtx.currentTime+duration)}catch(e){}}
+
   function showBanner(text) {
     if (!text) return;
     const el = document.getElementById('banner-notify');
@@ -447,6 +555,7 @@
     document.getElementById('table-center-cards').innerHTML = '';
     document.getElementById('my-cards').innerHTML = '';
     document.getElementById('seats-container').innerHTML = '';
+    document.getElementById('binh-showdown-modal').classList.add('hidden');
     
     clearInterval(turnTimerInterval);
     document.querySelectorAll('.turn-clock').forEach(el => el.remove());
@@ -458,35 +567,83 @@
 
   async function auth(type) {
     const username = document.getElementById('auth-user').value.trim();
-    const password = document.getElementById('auth-pass').value.trim();
+    const password = document.getElementById('auth-pass').value;
     if (!username || !password) return showBanner('Vui lòng nhập đủ thông tin!');
-
-    showBanner(type === 'login' ? 'Đang đăng nhập...' : 'Đang xử lý đăng ký...');
-
+    showBanner(type === 'login' ? 'Đang đăng nhập...' : 'Đang tạo tài khoản...');
     try {
-      const res = await fetch(`/api/${type}`, {
+      const res = await fetch(`/api/account/${type}`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({username,password})
+      });
+      const data=await res.json();
+      if(!res.ok || !data.ok) return showBanner('❌ '+(data.error||'Có lỗi xảy ra!'));
+      userProfile={...data.user,balance:Number(data.user.coins||0)};
+      localStorage.setItem('rt_session',data.sessionId);
+      localStorage.removeItem('royal_table_username');
+      document.getElementById('auth-panel').classList.add('hidden');
+      document.getElementById('lobby-panel').classList.remove('hidden');
+      updateProfileTag();
+      socket.emit('auth_session',{sessionId:data.sessionId});
+      showBanner(type==='register'?`🎉 Tạo tài khoản [${userProfile.nickname}] thành công!`:`Chào mừng [${userProfile.nickname}] quay trở lại!`);
+      document.getElementById('auth-pass').value='';
+      if(window.RTAccount) RTAccount.setUser(data.user,data.sessionId);
+    }catch(e){console.error(e);showBanner('❌ Không kết nối được máy chủ. Hãy chạy: node index.js');}
+  }
+
+  function updateProfileTag(){
+    if(!userProfile) return;
+    document.getElementById('profile-tag').innerText=`👤 ${userProfile.nickname||userProfile.username} | 💰 ${Number(userProfile.balance||0).toLocaleString()} xu`;
+  }
+
+  async function sendGift() {
+    const recipientUsername = document.getElementById('gift-user').value.trim();
+    const amount = document.getElementById('gift-amt').value;
+    const sid = localStorage.getItem('rt_session');
+    if (!recipientUsername || !amount) return showBanner('Vui lòng nhập tên người nhận và số xu!');
+    
+    try {
+      const res = await fetch('/api/account/gift', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        headers: { 'Content-Type': 'application/json', 'x-session-id': sid },
+        body: JSON.stringify({ recipientUsername, amount })
       });
       const data = await res.json();
-      if (!res.ok) return showBanner(data.error);
-
-      if (type === 'register') {
-        showBanner('🎉 ' + data.message);
-      }
-      if (type === 'login') {
-        userProfile = data.user;
-        document.getElementById('auth-panel').classList.add('hidden');
-        document.getElementById('lobby-panel').classList.remove('hidden');
-        document.getElementById('profile-tag').innerText = `👤 ${userProfile.username} | 💰 ${userProfile.balance} xu`;
-        showBanner(`Chào mừng [${userProfile.username}] quay trở lại!`);
-        socket.emit('auth_session', { username: userProfile.username });
-      }
-    } catch (e) {
-      showBanner('Lỗi kết nối máy chủ!');
+      if (!res.ok || !data.ok) return showBanner('❌ ' + (data.error || 'Lỗi tặng xu'));
+      showBanner(`🎉 ${data.message}`);
+      document.getElementById('gift-user').value = '';
+      document.getElementById('gift-amt').value = '';
+    } catch(e) {
+      showBanner('❌ Lỗi kết nối server.');
     }
   }
+
+  async function restoreSession(){
+    const sid=localStorage.getItem('rt_session');
+    if(!sid) return;
+    try{
+      const res=await fetch('/api/account/me',{headers:{'x-session-id':sid}});
+      const data=await res.json();
+      if(!res.ok || !data.user){localStorage.removeItem('rt_session');return;}
+      userProfile={...data.user,balance:Number(data.user.coins||0)};
+      document.getElementById('auth-panel').classList.add('hidden');
+      document.getElementById('lobby-panel').classList.remove('hidden');
+      updateProfileTag();
+      socket.emit('auth_session',{sessionId:sid});
+      if(window.RTAccount) RTAccount.setUser(data.user,sid);
+    }catch(e){localStorage.removeItem('rt_session');}
+  }
+
+  socket.on('connect',restoreSession);
+  socket.on('auth_required',()=>{
+    userProfile=null; localStorage.removeItem('rt_session');
+    document.getElementById('auth-panel').classList.remove('hidden');
+    document.getElementById('lobby-panel').classList.add('hidden');
+    showBanner('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+  });
+  socket.on('account_balance',({balance,user})=>{
+    if(userProfile){ userProfile={...user,balance:Number(balance||user?.coins||0)}; updateProfileTag(); const tag=document.getElementById('profile-tag'); tag.classList.remove('account-bump'); void tag.offsetWidth; tag.classList.add('account-bump'); }
+    if(window.RTAccount) RTAccount.refreshFromServer(user);
+  });
 
   function createRoom() {
     const roomName = document.getElementById('room-name').value;
@@ -521,19 +678,143 @@
   }
   function passTurn() { socket.emit('pass_turn'); }
 
+  let binhArrange={chi1:[],chi2:[],chi3:[]};
+  let binhSelected=[];
+  function openBinh(){
+    if(!currentRoom || currentRoom.type!=='binh') return;
+    document.getElementById('binh-panel').classList.remove('hidden');
+    const me=currentRoom.players.find(p=>p.username===userProfile.username);
+    if(me && me.binhChi){ binhArrange={chi1:[...me.binhChi.chi1],chi2:[...me.binhChi.chi2],chi3:[...me.binhChi.chi3]}; }
+    else clearBinhArrange(false);
+    binhSelected=[]; renderBinh();
+  }
+  function closeBinh(){document.getElementById('binh-panel').classList.add('hidden');}
+  function clearBinhArrange(close=true){binhArrange={chi1:[],chi2:[],chi3:[]};binhSelected=[];renderBinh();if(close)showBanner('Đã xóa cách xếp.');}
+  function allBinhCards(){const me=currentRoom?.players.find(p=>p.username===userProfile.username);return me?.cards||[];}
+  function arrangedCodes(){return new Set([...binhArrange.chi1,...binhArrange.chi2,...binhArrange.chi3].map(c=>c.code));}
+  function cardHtml(c,selected=false){const red=c.suit==='♦'||c.suit==='♥';return `<div class="binh-mini-card ${red?'red':''} ${selected?'picked':''}" onclick="toggleBinhPick('${c.code}')"><b>${c.rank}</b><span>${c.suit}</span></div>`;}
+  function toggleBinhPick(code){const i=binhSelected.indexOf(code);if(i>=0)binhSelected.splice(i,1);else binhSelected.push(code);renderBinh();}
+  function removeFromBinh(code){for(const k of ['chi1','chi2','chi3'])binhArrange[k]=binhArrange[k].filter(c=>c.code!==code);renderBinh();}
+  function assignToBinh(n){
+    const key='chi'+n, max=n===3?3:5, cards=allBinhCards();
+    const zone=binhArrange[key];
+    const selected=cards.filter(c=>binhSelected.includes(c.code));
+    if(zone.length+selected.length>max) return showBanner(`Chi ${n} chỉ được ${max} lá.`);
+    const already=arrangedCodes();
+    selected.forEach(c=>{if(!already.has(c.code))zone.push(c);});
+    binhSelected=[];renderBinh();
+  }
+  function autoArrangeBinh(){
+    const cards=[...allBinhCards()];
+    if(cards.length!==13)return;
+    cards.sort((a,b)=>{const rv={2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,J:11,Q:12,K:13,A:14};return rv[a.rank]-rv[b.rank];});
+    binhArrange={chi1:cards.slice(0,5),chi2:cards.slice(5,10),chi3:cards.slice(10,13)};binhSelected=[];renderBinh();showBanner('Đã xếp mẫu 5-5-3. Bạn có thể chỉnh lại.');
+  }
+  function renderBinh(){
+    const cards=allBinhCards(),used=arrangedCodes();
+    document.getElementById('binh-available').innerHTML=cards.filter(c=>!used.has(c.code)).map(c=>cardHtml(c,binhSelected.includes(c.code))).join('')||'<span style="color:#9ba4b7;font-size:12px">Tất cả 13 lá đã được xếp.</span>';
+    for(const n of [1,2,3])document.getElementById('binh-chi'+n).innerHTML=binhArrange['chi'+n].map(c=>`<div class="binh-placed" onclick="removeFromBinh('${c.code}')"><div class="binh-mini-card ${(['♦','♥'].includes(c.suit)?'red':'')}"><b>${c.rank}</b><span>${c.suit}</span></div></div>`).join('');
+    const total=binhArrange.chi1.length+binhArrange.chi2.length+binhArrange.chi3.length;
+    document.getElementById('binh-hint').textContent=`Đã xếp ${total}/13 lá • Chi 1: ${binhArrange.chi1.length}/5 • Chi 2: ${binhArrange.chi2.length}/5 • Chi 3: ${binhArrange.chi3.length}/3`;
+  }
+  function submitBinhArrange(){
+    if(binhArrange.chi1.length!==5||binhArrange.chi2.length!==5||binhArrange.chi3.length!==3)return showBanner('Phải xếp đủ 5 - 5 - 3 lá.');
+    socket.emit('submit_binh',binhArrange);closeBinh();
+  }
+
   function respondBaoSam(isBao) {
     document.getElementById('sam-prompt').classList.add('hidden');
     socket.emit('action_bao_sam', { isBao });
   }
 
   function toggleSelectCard(card) {
+    uiSound(640);
     const idx = selectedCards.findIndex(c => c.code === card.code);
     if (idx > -1) selectedCards.splice(idx, 1);
     else selectedCards.push(card);
     renderMyCards();
   }
 
+  // --- LẮNG NGHE SỰ KIỆN SHOWDOWN MẬU BINH ---
+  socket.on('binh_showdown', (showdownData) => {
+    document.getElementById('binh-panel').classList.add('hidden');
+    const modal = document.getElementById('binh-showdown-modal');
+    const content = document.getElementById('binh-showdown-content');
+    modal.classList.remove('hidden');
+    
+    let html = '';
+    showdownData.forEach(p => {
+      const cls = p.score > 0 ? 'winner' : (p.score < 0 ? 'loser' : '');
+      const lungText = p.isLung ? '<span style="color:#dc2626; font-weight:bold;">(BINH LỦNG)</span>' : '';
+      const scText = p.score > 0 ? `+${p.score}` : p.score;
+      
+      html += `
+        <div class="showdown-player ${cls}">
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <strong style="color:#fff; font-size:16px;">${p.username} ${lungText}</strong>
+            <strong style="color:${p.score > 0 ? '#4ade80' : '#dc2626'}; font-size:18px;">${scText} Điểm</strong>
+          </div>
+      `;
+      if (!p.isLung) {
+        const renderChi = (chiName, chiCards) => {
+          return `<div class="showdown-chi-row"><span style="font-size:10px; color:#aaa; margin-right:4px;">${chiName}:</span> ` + 
+            chiCards.map(c => cardHtml(c)).join('') + `</div>`;
+        };
+        html += renderChi('Chi 1', p.chi1);
+        html += renderChi('Chi 2', p.chi2);
+        html += renderChi('Chi 3', p.chi3);
+      }
+      html += `</div>`;
+    });
+    content.innerHTML = html;
+  });
+
   socket.on('banner_notify', (msg) => showBanner(msg));
+	// Lắng nghe tin nhắn và Icon từ server
+  socket.on('receive_chat', ({ username, message, isEmote }) => {
+    if (isEmote) {
+      showFloatingEmote(username, message);
+    } else {
+      const box = document.getElementById('chat-messages');
+      box.innerHTML += `<div><b style="color:#facc15">${username}:</b> ${message}</div>`;
+      box.scrollTop = box.scrollHeight; // Tự cuộn xuống dòng mới
+    }
+  });
+
+  function sendChat() {
+    const input = document.getElementById('chat-input');
+    const msg = input.value.trim();
+    if (msg && currentRoom) {
+      socket.emit('send_chat', { message: msg, isEmote: false });
+      input.value = '';
+    }
+  }
+
+  function sendEmote(icon) {
+    if (currentRoom) socket.emit('send_chat', { message: icon, isEmote: true });
+  }
+
+  // Hiệu ứng thả Icon bay lên từ Avatar người dùng
+  function showFloatingEmote(username, icon) {
+    const avatarWrap = document.getElementById(`avatar-wrap-${username}`);
+    if (!avatarWrap) return;
+
+    const emoteEl = document.createElement('div');
+    emoteEl.innerText = icon;
+    emoteEl.style.position = 'absolute';
+    emoteEl.style.fontSize = '35px';
+    emoteEl.style.top = '-10px';
+    emoteEl.style.left = '50%';
+    emoteEl.style.transform = 'translateX(-50%)';
+    emoteEl.style.animation = 'floatUp 1.5s ease-out forwards';
+    emoteEl.style.zIndex = '200';
+    emoteEl.style.pointerEvents = 'none';
+
+    avatarWrap.appendChild(emoteEl);
+    
+    // Tự động xóa icon sau 1.5 giây
+    setTimeout(() => emoteEl.remove(), 1500);
+  }
 
   socket.on('player_passed_notice', ({ username }) => {
     passedPlayersMap[username] = true;
@@ -605,6 +886,7 @@
   });
 
   socket.on('game_started', (room) => {
+    uiSound(420,.09);
     resetTableUI();
     currentRoom = room;
     showBanner('Ván đấu bắt đầu!');
@@ -612,6 +894,7 @@
   });
 
   socket.on('game_ended', (room) => {
+    uiSound(760,.11);
     currentRoom = room;
     selectedCards = [];
     clearInterval(turnTimerInterval);
@@ -649,7 +932,7 @@
     const isRed = (c.suit === '♦' || c.suit === '♥');
     const isSelected = selectedCards.some(sc => sc.code === c.code);
     const div = document.createElement('div');
-    div.className = `card-item ${isRed ? 'red' : ''} ${isSelected ? 'selected' : ''}`;
+    div.className = `card-item dealt ${isRed ? 'red' : ''} ${isSelected ? 'selected' : ''}`;
     div.innerHTML = `
       <div class="card-corner"><span>${c.rank}</span><span style="font-size:14px;">${c.suit}</span></div>
       <div class="card-center-suit">${c.suit}</div>
@@ -660,7 +943,7 @@
 
   function updateTableUI() {
     if (!currentRoom) return;
-
+	document.getElementById('chat-container').classList.remove('hidden');
     document.getElementById('table-title').innerText = `${currentRoom.name} [${currentRoom.type.toUpperCase()}]`;
 
     const isDealer = currentRoom.dealer === userProfile.username;
@@ -739,6 +1022,8 @@
 
     const isMyTurn = currentRoom.status === 'PLAYING' && currentRoom.currentTurn === userProfile.username;
     document.getElementById('turn-actions').classList.toggle('hidden', !isMyTurn || !['tienlen', 'sam'].includes(currentRoom.type));
+    const meBinh=currentRoom.players.find(p=>p.username===userProfile.username);
+    document.getElementById('binh-actions').classList.toggle('hidden', currentRoom.type!=='binh' || currentRoom.status!=='PLAYING' || !meBinh || meBinh.binhDone);
     document.getElementById('xidach-actions').classList.toggle('hidden', !isMyTurn || currentRoom.type !== 'xidach');
 
     renderMyCards();
@@ -773,5 +1058,89 @@
     });
   }
 </script>
+
+<!-- Royal Table Account Center v5 -->
+<div id="account-center" class="hidden" style="position:fixed;inset:0;z-index:500;background:rgba(2,4,8,.76);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;">
+  <div style="width:min(94vw,760px);max-height:90vh;overflow:auto;background:linear-gradient(145deg,#171d2a,#090c13);border:1px solid rgba(245,196,81,.35);border-radius:24px;padding:24px;box-shadow:0 30px 100px #000">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px">
+      <div><div style="font-size:10px;letter-spacing:3px;color:#9ba4b7;font-weight:900">PLAYER ACCOUNT</div><h2 style="margin-top:4px;color:#f5c451">Hồ sơ người chơi</h2></div>
+      <button onclick="RTAccount.close()" class="btn-red">Đóng</button>
+    </div>
+    <div id="rt-profile-card" style="display:grid;grid-template-columns:110px 1fr;gap:18px;align-items:center;background:rgba(255,255,255,.04);padding:18px;border-radius:18px;border:1px solid rgba(255,255,255,.08)">
+      <div id="rt-avatar" style="width:94px;height:94px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:45px;background:#0c1220;border:2px solid #f5c451"></div>
+      <div>
+        <div id="rt-nickname" style="font-size:22px;font-weight:900"></div>
+        <div id="rt-level" style="color:#f5c451;margin-top:4px"></div>
+        <div id="rt-stats" style="color:#9ba4b7;font-size:12px;margin-top:8px"></div>
+        <div style="height:7px;background:#252b38;border-radius:99px;margin-top:10px;overflow:hidden"><div id="rt-xpbar" style="height:100%;width:0;background:#f5c451"></div></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0">
+      <button onclick="RTAccount.tab('history')">Lịch sử ván</button>
+      <button onclick="RTAccount.tab('rank')">Bảng xếp hạng</button>
+      <button onclick="RTAccount.tab('profile')" class="btn-gold">Chỉnh hồ sơ</button>
+      <button onclick="RTAccount.tab('password')" class="btn-blue">Đổi mật khẩu</button>
+      <button onclick="RTAccount.logout()" class="btn-red">Đăng xuất</button>
+    </div>
+    <div id="rt-panel"></div>
+  </div>
+</div>
+<script>
+window.RTAccount=(()=>{
+  let user=null, sid=localStorage.getItem('rt_session');
+  const $=id=>document.getElementById(id);
+  const api=async(path,opt={})=>{
+    opt.headers={...(opt.headers||{}),'Content-Type':'application/json'};
+    if(sid) opt.headers['x-session-id']=sid;
+    const r=await fetch(path,opt), d=await r.json().catch(()=>({}));
+    if(!r.ok||d.ok===false) throw new Error(d.error||'Có lỗi xảy ra');
+    return d;
+  };
+  function open(){ $('account-center').classList.remove('hidden'); renderProfile(); }
+  function close(){ $('account-center').classList.add('hidden'); }
+  async function me(){ try{let d=await api('/api/account/me');user=d.user;renderProfile();return user}catch{return null} }
+  function renderProfile(){
+    if(!user)return;
+    $('rt-avatar').textContent=user.avatar||'🤖';
+    $('rt-nickname').textContent=user.nickname;
+    $('rt-level').textContent=`LEVEL ${user.level} • ${user.xp} XP • ${user.coins.toLocaleString()} 🪙`;
+    $('rt-stats').textContent=`${user.games} ván • ${user.wins} thắng • ${user.losses} thua • Tỷ lệ thắng ${user.winRate}%`;
+    $('rt-xpbar').style.width=(user.xp%100)+'%';
+  }
+  async function register(username,password,nickname,avatar='🤖'){
+    const d=await api('/api/account/register',{method:'POST',body:JSON.stringify({username,password,nickname,avatar})});
+    sid=d.sessionId;localStorage.setItem('rt_session',sid);user=d.user;return user;
+  }
+  async function login(username,password){
+    const d=await api('/api/account/login',{method:'POST',body:JSON.stringify({username,password})});
+    sid=d.sessionId;localStorage.setItem('rt_session',sid);user=d.user;return user;
+  }
+  async function logout(){
+    try{await api('/api/account/logout',{method:'POST'})}catch{}
+    sid=null;user=null;localStorage.removeItem('rt_session');close();location.reload();
+  }
+  async function tab(t){
+    const p=$('rt-panel');
+    if(t==='history'){
+      const d=await api('/api/account/history?limit=30');
+      p.innerHTML='<h3 style="margin-bottom:10px">30 ván gần nhất</h3>'+ (d.items.length?d.items.map(x=>`<div style="display:flex;justify-content:space-between;padding:10px;border-bottom:1px solid #202532;font-size:12px"><span>${new Date(x.createdAt).toLocaleString('vi-VN')} • ${x.result}</span><b style="color:${x.delta>=0?'#23d39b':'#ff5b67'}">${x.delta>=0?'+':''}${x.delta.toLocaleString()} 🪙</b></div>`).join(''):'<div style="color:#9ba4b7">Chưa có lịch sử.</div>');
+    } else if(t==='rank'){
+      const d=await api('/api/leaderboard');
+      p.innerHTML='<h3 style="margin-bottom:10px">Bảng xếp hạng</h3>'+d.items.map(x=>`<div style="display:grid;grid-template-columns:40px 1fr auto;gap:10px;padding:10px;border-bottom:1px solid #202532"><b>#${x.rank}</b><span>${x.avatar} ${x.nickname}<small style="display:block;color:#9ba4b7">Lv.${x.level} • ${x.wins} thắng</small></span><b>${x.coins.toLocaleString()} 🪙</b></div>`).join('');
+    } else if(t==='profile'){
+      p.innerHTML=`<h3>Chỉnh hồ sơ</h3><div style="margin-top:12px"><input id="rt-newnick" value="${user.nickname}" placeholder="Nickname" style="width:100%;padding:12px;border-radius:10px;margin-bottom:10px"><input id="rt-avatarin" value="${user.avatar}" maxlength="4" placeholder="Avatar emoji" style="width:100%;padding:12px;border-radius:10px;margin-bottom:10px"><button onclick="RTAccount.saveProfile()">Lưu thay đổi</button></div>`;
+    } else if(t==='password'){
+      p.innerHTML='<h3>Đổi mật khẩu</h3><div style="margin-top:12px"><input id="rt-oldpw" type="password" placeholder="Mật khẩu hiện tại" style="width:100%;padding:12px;border-radius:10px;margin-bottom:10px"><input id="rt-newpw" type="password" placeholder="Mật khẩu mới (ít nhất 6 ký tự)" style="width:100%;padding:12px;border-radius:10px;margin-bottom:10px"><button class="btn-blue" onclick="RTAccount.savePassword()">Đổi mật khẩu</button></div>';
+    }
+  }
+  async function saveProfile(){try{let d=await api('/api/account/profile',{method:'POST',body:JSON.stringify({nickname:$('rt-newnick').value,avatar:$('rt-avatarin').value})});user=d.user;window.userProfile={...d.user,balance:Number(d.user.coins||0)};if(window.updateProfileTag)updateProfileTag();renderProfile();alert('Đã cập nhật hồ sơ.')}catch(e){alert(e.message)}}
+  async function savePassword(){try{await api('/api/account/password',{method:'POST',body:JSON.stringify({oldPassword:$('rt-oldpw').value,newPassword:$('rt-newpw').value})});alert('Đổi mật khẩu thành công.');tab('profile')}catch(e){alert(e.message)}}
+  function setUser(u,newSid){user=u;if(newSid){sid=newSid;localStorage.setItem('rt_session',newSid)}renderProfile()}
+  function refreshFromServer(u){if(u){user=u;renderProfile()}}
+  return {open,close,me,register,login,logout,tab,saveProfile,savePassword,setUser,refreshFromServer};
+})();
+document.addEventListener('DOMContentLoaded',()=>RTAccount.me());
+</script>
+
 </body>
 </html>
